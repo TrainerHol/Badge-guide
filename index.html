@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Badge Guide</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header>
+        <h1>Badge Guide</h1>
+        <div class="search-container">
+          <input type="text" id="searchInput" placeholder="Search badges..." />
+        </div>
+      </header>
+
+      <main>
+        <div class="badge-grid-container">
+          <div class="badge-grid" id="badgeGrid">
+            <!-- Badge cards will be populated here -->
+          </div>
+          <div class="pagination"></div>
+        </div>
+
+        <div class="badge-details" id="badgeDetails">
+          <div class="badge-header">
+            <div class="badge-image" id="selectedBadgeImage"></div>
+            <div class="badge-title">
+              <h2 id="selectedBadgeName">Select a Badge</h2>
+              <div id="requirementsList"></div>
+            </div>
+          </div>
+          <div class="puzzles">
+            <h3>Required Puzzles</h3>
+            <div id="puzzlesList"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
