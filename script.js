@@ -421,10 +421,12 @@ function setupExportMode() {
     isExportMode = false;
     exportButton.classList.remove("selected");
     exportControls.style.display = "none";
-    // Reset badges to original state
+
+    // Reset badges while maintaining current sort
     badges = [...originalBadges];
+    sortBadges(currentSort);
+
     selectedForExport.clear();
-    renderBadgeGrid();
   });
 
   closeExport.addEventListener("click", () => {
