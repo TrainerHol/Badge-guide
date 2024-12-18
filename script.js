@@ -110,7 +110,7 @@ async function renderBadgeGrid() {
   badgeGrid.addEventListener(
     "wheel",
     (e) => {
-      if (e.deltaY !== 0) {
+      if (e.deltaY !== 0 && e.target.closest(".badge-grid")) {
         e.preventDefault();
         const pageWidth = columnsPerPage * (badgeSize + 16); // Include gap
         const direction = e.deltaY > 0 ? 1 : -1;

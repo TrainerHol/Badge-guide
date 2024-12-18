@@ -168,15 +168,27 @@ main {
   border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  max-height: 100%;
 }
 
 .badge-header {
   display: flex;
   gap: 1rem;
   margin-bottom: 1rem;
-  padding-bottom: 1rem;
+  padding: 0 0 1rem 0;
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  position: sticky;
+  top: -1rem;
+  background: var(--bg-secondary);
+  z-index: 1;
+  margin-top: -1rem;
+  padding-top: 1rem;
+  margin-left: -1rem;
+  margin-right: -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
 }
 
 .badge-image {
@@ -214,7 +226,8 @@ main {
 
 .puzzles {
   flex: 1;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
@@ -222,10 +235,13 @@ main {
   font-size: 0.9rem;
   color: var(--text-primary);
   margin-bottom: 0.8rem;
-  position: sticky;
-  top: 0;
   background: var(--bg-secondary);
   padding: 0.5rem 0;
+  flex-shrink: 0;
+}
+
+#puzzlesList {
+  padding-right: 0.5rem;
 }
 
 .puzzle-item {
@@ -290,4 +306,40 @@ main {
     align-items: center;
     text-align: center;
   }
+}
+
+.puzzles::-webkit-scrollbar {
+  width: 6px;
+}
+
+.puzzles::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.puzzles::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.puzzles::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
+.badge-details::-webkit-scrollbar {
+  width: 6px;
+}
+
+.badge-details::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.badge-details::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.badge-details::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
 }
