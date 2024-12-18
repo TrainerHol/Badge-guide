@@ -4,6 +4,8 @@ let badgePuzzles = [];
 let puzzles = [];
 let selectedBadge = null;
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+let discordId = localStorage.getItem("discordId");
+let clears = [];
 
 function getImageUrl(url) {
   if (!url) return "placeholder.png";
@@ -15,12 +17,13 @@ function getImageUrl(url) {
 
 async function loadData() {
   try {
-    const [badgesResponse, badgePuzzlesResponse, puzzlesResponse] = await Promise.all([fetch("sh-dump/badges.json"), fetch("sh-dump/badgePuzzles.json"), fetch("sh-dump/puzzles.json")]);
+    const [badgesResponse, badgePuzzlesResponse, puzzlesResponse, clearsResponse] = await Promise.all([fetch("sh-dump/badges.json"), fetch("sh-dump/badgePuzzles.json"), fetch("sh-dump/puzzles.json"), fetch("sh-dump/clears.json")]);
 
     originalBadges = await badgesResponse.json();
     badges = [...originalBadges];
     badgePuzzles = await badgePuzzlesResponse.json();
     puzzles = await puzzlesResponse.json();
+    clears = await clearsResponse.json();
 
     // Hide badge details initially
     document.getElementById("badgeDetails").style.display = "none";
@@ -66,6 +69,15 @@ async function renderBadgeGrid() {
   badges.forEach((badge) => {
     const card = document.createElement("div");
     card.className = "badge-card";
+    const completion = getBadgeCompletion(badge);
+
+    if (completion.completed) {
+      card.classList.add("obtained");
+    } else if (completion.percentage > 0) {
+      card.classList.add("partial");
+      card.setAttribute("data-progress", `${completion.percentage}% complete`);
+    }
+
     card.style.width = `${badgeSize}px`;
     if (selectedBadge && selectedBadge.id === badge.id) {
       card.classList.add("selected");
@@ -172,6 +184,18 @@ function selectBadge(badge) {
         const puzzleElement = document.createElement("div");
         puzzleElement.className = "puzzle-item";
 
+        // Check if puzzle is cleared by user
+        if (
+          discordId &&
+          clears.some(
+            (clear) =>
+              // Use jumper field instead of userId
+              clear.jumper.padStart(20, "0") === discordId.padStart(20, "0") && clear.puzzleId === puzzle.ID
+          )
+        ) {
+          puzzleElement.classList.add("cleared");
+        }
+
         // Create difficulty string from puzzle attributes
         const difficultyAttrs = [];
         if (puzzle.M) difficultyAttrs.push("M");
@@ -261,5 +285,65 @@ function setupSearch() {
   });
 }
 
+function setupDiscordModal() {
+  const modal = document.getElementById("discordModal");
+  const button = document.getElementById("setDiscordId");
+  const saveBtn = document.getElementById("saveDiscordId");
+  const cancelBtn = document.getElementById("cancelDiscordId");
+  const input = document.getElementById("discordIdInput");
+
+  button.addEventListener("click", () => {
+    modal.style.display = "flex";
+    input.value = discordId || "";
+  });
+
+  saveBtn.addEventListener("click", () => {
+    discordId = input.value.trim();
+    localStorage.setItem("discordId", discordId);
+    modal.style.display = "none";
+    // Refresh the grid to show obtained badges
+    renderBadgeGrid();
+    // Refresh the selected badge view if one is selected
+    if (selectedBadge) {
+      selectBadge(selectedBadge);
+    }
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    modal.style.display = "none";
+  });
+
+  window.addEventListener("click", (e) => {
+    if (e.target === modal) {
+      modal.style.display = "none";
+    }
+  });
+}
+
 // Initialize the application
-document.addEventListener("DOMContentLoaded", loadData);
+document.addEventListener("DOMContentLoaded", () => {
+  loadData();
+  setupDiscordModal();
+});
+
+function getBadgeCompletion(badge) {
+  if (!discordId) return { completed: false, percentage: 0 };
+
+  // Get all required puzzles for this badge
+  const requiredPuzzles = badgePuzzles.filter((bp) => bp.badgeId === badge.id).map((bp) => bp.puzzleId);
+  if (requiredPuzzles.length === 0) return { completed: false, percentage: 0 };
+
+  // Count completed puzzles
+  const completedCount = requiredPuzzles.filter((puzzleId) => clears.some((clear) => clear.jumper.padStart(20, "0") === discordId.padStart(20, "0") && clear.puzzleId === puzzleId)).length;
+
+  const percentage = Math.round((completedCount / requiredPuzzles.length) * 100);
+  return {
+    completed: percentage === 100,
+    percentage: percentage,
+  };
+}
+
+// Update the existing hasUserCompletedBadge to use the new function
+function hasUserCompletedBadge(badge) {
+  return getBadgeCompletion(badge).completed;
+}

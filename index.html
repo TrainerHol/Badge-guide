@@ -12,6 +12,7 @@
         <h1>Badge Guide</h1>
         <div class="search-container">
           <input type="text" id="searchInput" placeholder="Search badges..." />
+          <button id="setDiscordId" class="discord-button">Set Discord ID</button>
         </div>
       </header>
 
@@ -37,6 +38,16 @@
           </div>
         </div>
       </main>
+    </div>
+    <div id="discordModal" class="modal">
+      <div class="modal-content">
+        <h2>Set Discord ID</h2>
+        <input type="text" id="discordIdInput" placeholder="Enter your Discord ID" />
+        <div class="modal-buttons">
+          <button id="saveDiscordId">Save</button>
+          <button id="cancelDiscordId">Cancel</button>
+        </div>
+      </div>
     </div>
     <script src="script.js"></script>
   </body>
