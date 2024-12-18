@@ -234,29 +234,18 @@ function selectBadge(badge) {
 
   if (requirements && requirements.length > 0) {
     const userClears = discordId ? clearsByJumper.get(discordId.padStart(20, "0")) || new Set() : new Set();
+    console.log("User clears:", Array.from(userClears));
 
     requirements.forEach(({ puzzleId, puzzle }) => {
       const puzzleElement = document.createElement("div");
       puzzleElement.className = "puzzle-item";
 
+      console.log("Checking puzzle:", puzzleId, "Type:", typeof puzzleId);
+      console.log("Has clear:", userClears.has(puzzleId));
+
       if (discordId && userClears.has(puzzleId)) {
         puzzleElement.classList.add("cleared");
       }
-
-      // Create difficulty string from puzzle attributes
-      const difficultyAttrs = [];
-      if (puzzle.M) difficultyAttrs.push("M");
-      if (puzzle.E) difficultyAttrs.push("E");
-      if (puzzle.S) difficultyAttrs.push("S");
-      if (puzzle.P) difficultyAttrs.push("P");
-      if (puzzle.V) difficultyAttrs.push("V");
-      if (puzzle.J) difficultyAttrs.push("J");
-      if (puzzle.G) difficultyAttrs.push("G");
-      if (puzzle.L) difficultyAttrs.push("L");
-      if (puzzle.X) difficultyAttrs.push("X");
-
-      const difficulty = difficultyAttrs.length > 0 ? `[${difficultyAttrs.join("")}]` : "";
-      const rating = puzzle.Rating !== "-" ? `Rating: ${puzzle.Rating}` : "";
 
       puzzleElement.innerHTML = `
         <div class="puzzle-main">
@@ -264,7 +253,7 @@ function selectBadge(badge) {
           <span class="puzzle-id">#${puzzle.ID}</span>
         </div>
         <div class="puzzle-details">
-          by ${puzzle.Builder} ${difficulty} ${rating}
+          by ${puzzle.Builder} ${getDifficultyString(puzzle)} ${getRatingString(puzzle)}
           ${puzzle.GoalsRules ? `<div class="puzzle-rules">${puzzle.GoalsRules}</div>` : ""}
         </div>
       `;
@@ -728,12 +717,13 @@ async function calculateCompletionMetrics() {
 
 // Add this function to index the clears data for faster lookups
 function indexClearsData() {
-  // Index by jumper
+  // Index by jumper - pad the jumper ID when indexing
   puzzleData.clears.forEach((clear) => {
-    if (!clearsByJumper.has(clear.jumper)) {
-      clearsByJumper.set(clear.jumper, new Set());
+    const paddedJumper = clear.jumper.padStart(20, "0");
+    if (!clearsByJumper.has(paddedJumper)) {
+      clearsByJumper.set(paddedJumper, new Set());
     }
-    clearsByJumper.get(clear.jumper).add(clear.puzzleId);
+    clearsByJumper.get(paddedJumper).add(clear.puzzleId);
   });
 
   // Index by puzzle
@@ -741,7 +731,7 @@ function indexClearsData() {
     if (!clearsByPuzzle.has(clear.puzzleId)) {
       clearsByPuzzle.set(clear.puzzleId, new Set());
     }
-    clearsByPuzzle.get(clear.puzzleId).add(clear.jumper);
+    clearsByPuzzle.get(clear.puzzleId).add(clear.jumper.padStart(20, "0"));
   });
 
   // Cache puzzle requirements for each badge
@@ -756,4 +746,22 @@ function indexClearsData() {
 
     badgePuzzleRequirements.set(badge.id, requirements);
   });
+}
+
+function getDifficultyString(puzzle) {
+  const difficultyAttrs = [];
+  if (puzzle.M) difficultyAttrs.push("M");
+  if (puzzle.E) difficultyAttrs.push("E");
+  if (puzzle.S) difficultyAttrs.push("S");
+  if (puzzle.P) difficultyAttrs.push("P");
+  if (puzzle.V) difficultyAttrs.push("V");
+  if (puzzle.J) difficultyAttrs.push("J");
+  if (puzzle.G) difficultyAttrs.push("G");
+  if (puzzle.L) difficultyAttrs.push("L");
+  if (puzzle.X) difficultyAttrs.push("X");
+  return difficultyAttrs.length > 0 ? `[${difficultyAttrs.join("")}]` : "";
+}
+
+function getRatingString(puzzle) {
+  return puzzle.Rating !== "-" ? `Rating: ${puzzle.Rating}` : "";
 }
