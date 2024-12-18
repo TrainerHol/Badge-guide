@@ -1,11 +1,30 @@
 let badges = [];
 let originalBadges = [];
-let badgePuzzles = [];
-let puzzles = [];
+let puzzleData = {
+  puzzles: [],
+  badgePuzzles: [],
+  clears: [],
+};
 let selectedBadge = null;
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
 let discordId = localStorage.getItem("discordId");
 let clears = [];
+let isExportMode = false;
+let selectedForExport = new Set();
+let badgeMetricsCache = new Map();
+let badgeRatingsCache = new Map();
+let currentSort = "id";
+let isCalculating = false;
+const CHUNK_SIZE = 50; // Number of badges to process per chunk
+let dataLoaded = false;
+let metricsCalculated = {
+  rarity: false,
+  difficulty: false,
+};
+let completionCache = new Map();
+let clearsByJumper = new Map(); // Index clears by jumper
+let clearsByPuzzle = new Map(); // Index clears by puzzle
+let badgePuzzleRequirements = new Map(); // Cache puzzle requirements for badges
 
 function getImageUrl(url) {
   if (!url) return "placeholder.png";
@@ -15,21 +34,33 @@ function getImageUrl(url) {
   return `sh-dump/badges/${selectedBadge.id}.${extension}`;
 }
 
+function sortById(a, b) {
+  return parseInt(a.id) - parseInt(b.id);
+}
+
 async function loadData() {
   try {
     const [badgesResponse, badgePuzzlesResponse, puzzlesResponse, clearsResponse] = await Promise.all([fetch("sh-dump/badges.json"), fetch("sh-dump/badgePuzzles.json"), fetch("sh-dump/puzzles.json"), fetch("sh-dump/clears.json")]);
 
     originalBadges = await badgesResponse.json();
-    badges = [...originalBadges];
-    badgePuzzles = await badgePuzzlesResponse.json();
-    puzzles = await puzzlesResponse.json();
-    clears = await clearsResponse.json();
+    puzzleData.badgePuzzles = await badgePuzzlesResponse.json();
+    puzzleData.puzzles = await puzzlesResponse.json();
+    puzzleData.clears = await clearsResponse.json();
+
+    // Mark data as loaded
+    dataLoaded = true;
 
     // Hide badge details initially
     document.getElementById("badgeDetails").style.display = "none";
 
+    // Set initial sort by ID and show badges immediately
+    badges = [...originalBadges].sort(sortById);
     await renderBadgeGrid();
+
     setupSearch();
+
+    // Index the data after loading
+    indexClearsData();
   } catch (error) {
     console.error("Error loading data:", error);
     document.body.innerHTML = '<div class="error">Error loading data. Please check if the JSON files are accessible.</div>';
@@ -86,7 +117,24 @@ async function renderBadgeGrid() {
       <img src="sh-dump/badges/${badge.id}.${badge.imageUrl.split(".").pop()}" alt="${badge.name}">
       <h3>${badge.name}</h3>
     `;
-    card.addEventListener("click", () => toggleBadge(badge));
+    card.addEventListener("click", () => {
+      if (!dataLoaded) return; // Prevent clicks until data is loaded
+
+      if (isExportMode) {
+        if (hasUserCompletedBadge(badge)) {
+          if (selectedForExport.has(badge.id)) {
+            selectedForExport.delete(badge.id);
+            card.classList.remove("export-selected");
+          } else if (selectedForExport.size < 8) {
+            selectedForExport.add(badge.id);
+            card.classList.add("export-selected");
+          }
+          toggleBadge(badge);
+        }
+      } else {
+        toggleBadge(badge);
+      }
+    });
     badgeGrid.appendChild(card);
   });
 
@@ -131,8 +179,8 @@ function debounce(func, wait) {
 }
 
 function toggleBadge(badge) {
-  if (selectedBadge && selectedBadge.id === badge.id) {
-    // Deselect the badge
+  if (selectedBadge && selectedBadge.id === badge.id && !isExportMode) {
+    // Only deselect if not in export mode
     selectedBadge = null;
     document.getElementById("badgeDetails").style.display = "none";
     document.querySelectorAll(".badge-card").forEach((card) => {
@@ -141,12 +189,14 @@ function toggleBadge(badge) {
       }
     });
   } else {
-    // Select the badge
+    // Always select and show details
     selectBadge(badge);
   }
 }
 
 function selectBadge(badge) {
+  if (!dataLoaded) return;
+
   selectedBadge = badge;
 
   // Show badge details
@@ -157,6 +207,12 @@ function selectBadge(badge) {
   document.getElementById("selectedBadgeName").textContent = badge.name;
   const badgeImage = document.getElementById("selectedBadgeImage");
   badgeImage.style.backgroundImage = `url(${getImageUrl(badge.imageUrl)})`;
+
+  // Clear existing metrics if any
+  const existingMetrics = document.querySelector(".badge-metrics");
+  if (existingMetrics) {
+    existingMetrics.remove();
+  }
 
   // Display badge info
   const requirementsList = document.getElementById("requirementsList");
@@ -172,61 +228,57 @@ function selectBadge(badge) {
 
   // Display required puzzles
   const puzzlesList = document.getElementById("puzzlesList");
-  puzzlesList.innerHTML = "";
+  const fragment = document.createDocumentFragment();
 
-  // Get all puzzles required for this badge
-  const badgePuzzleEntries = badgePuzzles.filter((bp) => bp.badgeId === badge.id);
+  const requirements = badgePuzzleRequirements.get(badge.id);
 
-  if (badgePuzzleEntries && badgePuzzleEntries.length > 0) {
-    badgePuzzleEntries.forEach((entry) => {
-      const puzzle = puzzles.find((p) => p.ID === entry.puzzleId);
-      if (puzzle) {
-        const puzzleElement = document.createElement("div");
-        puzzleElement.className = "puzzle-item";
+  if (requirements && requirements.length > 0) {
+    const userClears = discordId ? clearsByJumper.get(discordId.padStart(20, "0")) || new Set() : new Set();
 
-        // Check if puzzle is cleared by user
-        if (
-          discordId &&
-          clears.some(
-            (clear) =>
-              // Use jumper field instead of userId
-              clear.jumper.padStart(20, "0") === discordId.padStart(20, "0") && clear.puzzleId === puzzle.ID
-          )
-        ) {
-          puzzleElement.classList.add("cleared");
-        }
+    requirements.forEach(({ puzzleId, puzzle }) => {
+      const puzzleElement = document.createElement("div");
+      puzzleElement.className = "puzzle-item";
 
-        // Create difficulty string from puzzle attributes
-        const difficultyAttrs = [];
-        if (puzzle.M) difficultyAttrs.push("M");
-        if (puzzle.E) difficultyAttrs.push("E");
-        if (puzzle.S) difficultyAttrs.push("S");
-        if (puzzle.P) difficultyAttrs.push("P");
-        if (puzzle.V) difficultyAttrs.push("V");
-        if (puzzle.J) difficultyAttrs.push("J");
-        if (puzzle.G) difficultyAttrs.push("G");
-        if (puzzle.L) difficultyAttrs.push("L");
-        if (puzzle.X) difficultyAttrs.push("X");
-
-        const difficulty = difficultyAttrs.length > 0 ? `[${difficultyAttrs.join("")}]` : "";
-        const rating = puzzle.Rating !== "-" ? `Rating: ${puzzle.Rating}` : "";
-
-        puzzleElement.innerHTML = `
-          <div class="puzzle-main">
-            <span class="puzzle-name">${puzzle.PuzzleName}</span>
-            <span class="puzzle-id">#${puzzle.ID}</span>
-          </div>
-          <div class="puzzle-details">
-            by ${puzzle.Builder} ${difficulty} ${rating}
-            ${puzzle.GoalsRules ? `<div class="puzzle-rules">${puzzle.GoalsRules}</div>` : ""}
-          </div>
-        `;
-        puzzlesList.appendChild(puzzleElement);
+      if (discordId && userClears.has(puzzleId)) {
+        puzzleElement.classList.add("cleared");
       }
+
+      // Create difficulty string from puzzle attributes
+      const difficultyAttrs = [];
+      if (puzzle.M) difficultyAttrs.push("M");
+      if (puzzle.E) difficultyAttrs.push("E");
+      if (puzzle.S) difficultyAttrs.push("S");
+      if (puzzle.P) difficultyAttrs.push("P");
+      if (puzzle.V) difficultyAttrs.push("V");
+      if (puzzle.J) difficultyAttrs.push("J");
+      if (puzzle.G) difficultyAttrs.push("G");
+      if (puzzle.L) difficultyAttrs.push("L");
+      if (puzzle.X) difficultyAttrs.push("X");
+
+      const difficulty = difficultyAttrs.length > 0 ? `[${difficultyAttrs.join("")}]` : "";
+      const rating = puzzle.Rating !== "-" ? `Rating: ${puzzle.Rating}` : "";
+
+      puzzleElement.innerHTML = `
+        <div class="puzzle-main">
+          <span class="puzzle-name">${puzzle.PuzzleName}</span>
+          <span class="puzzle-id">#${puzzle.ID}</span>
+        </div>
+        <div class="puzzle-details">
+          by ${puzzle.Builder} ${difficulty} ${rating}
+          ${puzzle.GoalsRules ? `<div class="puzzle-rules">${puzzle.GoalsRules}</div>` : ""}
+        </div>
+      `;
+      fragment.appendChild(puzzleElement);
     });
   } else {
-    puzzlesList.innerHTML = "<div class='no-puzzles'>No puzzles required</div>";
+    const noPuzzles = document.createElement("div");
+    noPuzzles.className = "no-puzzles";
+    noPuzzles.textContent = "No puzzles required";
+    fragment.appendChild(noPuzzles);
   }
+
+  puzzlesList.innerHTML = "";
+  puzzlesList.appendChild(fragment);
 
   // Update selected state in grid
   document.querySelectorAll(".badge-card").forEach((card) => {
@@ -235,6 +287,19 @@ function selectBadge(badge) {
       card.classList.add("selected");
     }
   });
+
+  // Add metrics before puzzles section
+  const metrics = getBadgeMetrics(badge);
+  const puzzles = document.querySelector(".puzzles");
+  const metricsDiv = document.createElement("div");
+  metricsDiv.className = "badge-metrics";
+  metricsDiv.innerHTML = `
+    <div class="metric-item">
+      <span class="metric-value">${metrics.ownedBy}</span>
+      <span class="metric-label">jumpers own this badge</span>
+    </div>
+  `;
+  puzzles.insertBefore(metricsDiv, puzzles.firstChild);
 }
 
 function setupSearch() {
@@ -250,8 +315,8 @@ function setupSearch() {
 
     // Create a map of badge IDs to their required puzzles
     const badgePuzzleMap = new Map();
-    badgePuzzles.forEach((bp) => {
-      const puzzle = puzzles.find((p) => p.ID === bp.puzzleId);
+    puzzleData.badgePuzzles.forEach((bp) => {
+      const puzzle = puzzleData.puzzles.find((p) => p.ID === bp.puzzleId);
       if (puzzle) {
         if (!badgePuzzleMap.has(bp.badgeId)) {
           badgePuzzleMap.set(bp.badgeId, []);
@@ -301,9 +366,14 @@ function setupDiscordModal() {
     discordId = input.value.trim();
     localStorage.setItem("discordId", discordId);
     modal.style.display = "none";
-    // Refresh the grid to show obtained badges
-    renderBadgeGrid();
-    // Refresh the selected badge view if one is selected
+    document.getElementById("exportMode").style.display = discordId ? "block" : "none";
+
+    // Clear caches
+    completionCache.clear();
+
+    // Re-sort with current sorting method
+    sortBadges(currentSort);
+
     if (selectedBadge) {
       selectBadge(selectedBadge);
     }
@@ -320,30 +390,370 @@ function setupDiscordModal() {
   });
 }
 
+function setupExportMode() {
+  const exportButton = document.getElementById("exportMode");
+  const exportControls = document.getElementById("exportControls");
+  const confirmExport = document.getElementById("confirmExport");
+  const cancelExport = document.getElementById("cancelExport");
+  const exportModal = document.getElementById("exportModal");
+  const closeExport = document.getElementById("closeExport");
+  const copyButton = document.getElementById("copyBadges");
+  const badgeGrid = document.getElementById("badgeGrid");
+
+  // Show export button if Discord ID is set
+  exportButton.style.display = discordId ? "block" : "none";
+
+  exportButton.addEventListener("click", () => {
+    isExportMode = !isExportMode;
+    exportButton.classList.toggle("selected");
+    exportControls.style.display = isExportMode ? "flex" : "none";
+
+    // Filter badges when entering export mode
+    if (isExportMode) {
+      badges = originalBadges.filter((badge) => hasUserCompletedBadge(badge));
+    } else {
+      badges = [...originalBadges];
+    }
+
+    selectedForExport.clear();
+    renderBadgeGrid();
+  });
+
+  confirmExport.addEventListener("click", () => {
+    if (selectedForExport.size > 0) {
+      const badgeIds = Array.from(selectedForExport).join(", ");
+      document.getElementById("exportedBadges").textContent = badgeIds;
+      navigator.clipboard.writeText(badgeIds);
+      exportModal.style.display = "flex";
+    }
+  });
+
+  cancelExport.addEventListener("click", () => {
+    isExportMode = false;
+    exportButton.classList.remove("selected");
+    exportControls.style.display = "none";
+    // Reset badges to original state
+    badges = [...originalBadges];
+    selectedForExport.clear();
+    renderBadgeGrid();
+  });
+
+  closeExport.addEventListener("click", () => {
+    exportModal.style.display = "none";
+  });
+
+  copyButton.addEventListener("click", () => {
+    navigator.clipboard.writeText(document.getElementById("exportedBadges").textContent);
+  });
+}
+
+// Add sorting functions
+async function sortBadges(sortType) {
+  currentSort = sortType;
+
+  // Show loading overlay if metrics need to be calculated
+  let loadingOverlay;
+  if ((sortType === "rarity" && !metricsCalculated.rarity) || (sortType === "difficulty" && !metricsCalculated.difficulty)) {
+    loadingOverlay = showLoadingOverlay(`Calculating ${sortType} metrics...`);
+  }
+
+  try {
+    switch (sortType) {
+      case "id":
+        badges.sort(sortById);
+        break;
+
+      case "alphabetical":
+        badges.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+
+      case "rarity":
+        if (!metricsCalculated.rarity) {
+          await calculateRarityMetrics();
+          metricsCalculated.rarity = true;
+        }
+        badges.sort((a, b) => {
+          const aMetrics = badgeMetricsCache.get(a.id);
+          const bMetrics = badgeMetricsCache.get(b.id);
+          return aMetrics.ownedBy - bMetrics.ownedBy;
+        });
+        break;
+
+      case "completion":
+        if (discordId) {
+          if (completionCache.size === 0) {
+            await calculateCompletionMetrics();
+          }
+          badges.sort((a, b) => {
+            const aCompletion = completionCache.get(a.id);
+            const bCompletion = completionCache.get(b.id);
+            if (aCompletion.completed !== bCompletion.completed) {
+              return bCompletion.completed ? 1 : -1;
+            }
+            return bCompletion.percentage - aCompletion.percentage;
+          });
+        }
+        break;
+
+      case "difficulty":
+        if (!metricsCalculated.difficulty) {
+          await calculateDifficultyMetrics();
+          metricsCalculated.difficulty = true;
+        }
+        badges.sort((a, b) => {
+          const aRating = badgeRatingsCache.get(a.id);
+          const bRating = badgeRatingsCache.get(b.id);
+          return bRating - aRating;
+        });
+        break;
+    }
+
+    renderBadgeGrid();
+  } finally {
+    if (loadingOverlay) {
+      loadingOverlay.remove();
+    }
+  }
+}
+
+// Split metric calculations into separate functions
+async function calculateRarityMetrics() {
+  const chunkSize = 50;
+  for (let i = 0; i < originalBadges.length; i += chunkSize) {
+    const chunk = originalBadges.slice(i, i + chunkSize);
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        chunk.forEach((badge) => {
+          badgeMetricsCache.set(badge.id, getBadgeMetrics(badge));
+        });
+        resolve();
+      });
+    });
+  }
+}
+
+async function calculateDifficultyMetrics() {
+  const chunkSize = 50;
+  for (let i = 0; i < originalBadges.length; i += chunkSize) {
+    const chunk = originalBadges.slice(i, i + chunkSize);
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        chunk.forEach((badge) => {
+          badgeRatingsCache.set(badge.id, getAverageRating(badge));
+        });
+        resolve();
+      });
+    });
+  }
+}
+
+function showLoadingOverlay(message) {
+  const overlay = document.createElement("div");
+  overlay.className = "loading-overlay";
+  overlay.innerHTML = `
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-message">${message}</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function getAverageRating(badge) {
+  const puzzleIds = puzzleData.badgePuzzles.filter((bp) => bp.badgeId === badge.id).map((bp) => bp.puzzleId);
+
+  const ratings = puzzleIds
+    .map((id) => puzzleData.puzzles.find((p) => p.ID === id))
+    .filter((p) => p && p.Rating !== "-")
+    .map((p) => parseFloat(p.Rating));
+
+  if (ratings.length === 0) return 0;
+  return ratings.reduce((a, b) => a + b, 0) / ratings.length;
+}
+
+// Add to setupSearch or create new setup function
+function setupSorting() {
+  const sortSelect = document.getElementById("sortSelect");
+  sortSelect.value = currentSort;
+  sortSelect.addEventListener("change", (e) => {
+    sortBadges(e.target.value);
+  });
+}
+
 // Initialize the application
 document.addEventListener("DOMContentLoaded", () => {
   loadData();
   setupDiscordModal();
+  setupExportMode();
+  setupSorting();
 });
 
 function getBadgeCompletion(badge) {
   if (!discordId) return { completed: false, percentage: 0 };
 
-  // Get all required puzzles for this badge
-  const requiredPuzzles = badgePuzzles.filter((bp) => bp.badgeId === badge.id).map((bp) => bp.puzzleId);
+  // Check cache first
+  if (completionCache.has(badge.id)) {
+    return completionCache.get(badge.id);
+  }
+
+  // Calculate if not cached
+  const requiredPuzzles = puzzleData.badgePuzzles.filter((bp) => bp.badgeId === badge.id).map((bp) => bp.puzzleId);
   if (requiredPuzzles.length === 0) return { completed: false, percentage: 0 };
 
-  // Count completed puzzles
-  const completedCount = requiredPuzzles.filter((puzzleId) => clears.some((clear) => clear.jumper.padStart(20, "0") === discordId.padStart(20, "0") && clear.puzzleId === puzzleId)).length;
+  const completedCount = requiredPuzzles.filter((puzzleId) => puzzleData.clears.some((clear) => clear.jumper.padStart(20, "0") === discordId.padStart(20, "0") && clear.puzzleId === puzzleId)).length;
 
-  const percentage = Math.round((completedCount / requiredPuzzles.length) * 100);
-  return {
-    completed: percentage === 100,
-    percentage: percentage,
+  const result = {
+    completed: completedCount === requiredPuzzles.length,
+    percentage: Math.round((completedCount / requiredPuzzles.length) * 100),
   };
+
+  // Cache the result
+  completionCache.set(badge.id, result);
+  return result;
 }
 
 // Update the existing hasUserCompletedBadge to use the new function
 function hasUserCompletedBadge(badge) {
   return getBadgeCompletion(badge).completed;
+}
+
+// Add this helper function
+function getBadgeMetrics(badge) {
+  const requirements = badgePuzzleRequirements.get(badge.id) || [];
+  if (requirements.length === 0) return { ownedBy: 0 };
+
+  const puzzleIds = requirements.map((r) => r.puzzleId);
+  const jumperCounts = new Set();
+
+  // Get jumpers who cleared the first puzzle
+  const firstPuzzleClears = clearsByPuzzle.get(puzzleIds[0]) || new Set();
+
+  // Check each jumper against other required puzzles
+  firstPuzzleClears.forEach((jumper) => {
+    const jumpersClears = clearsByJumper.get(jumper) || new Set();
+    if (puzzleIds.every((pid) => jumpersClears.has(pid))) {
+      jumperCounts.add(jumper);
+    }
+  });
+
+  return { ownedBy: jumperCounts.size };
+}
+
+// Modify precalculateMetrics to use chunking
+async function precalculateMetrics() {
+  if (isCalculating) return;
+  isCalculating = true;
+
+  console.time("precalculate");
+  badgeMetricsCache.clear();
+  badgeRatingsCache.clear();
+
+  const totalBadges = originalBadges.length;
+  let processed = 0;
+
+  // Create a loading indicator
+  const header = document.querySelector("header");
+  const loadingBar = document.createElement("div");
+  loadingBar.className = "loading-bar";
+  loadingBar.innerHTML = `
+    <div class="loading-progress">
+      <div class="progress-bar"></div>
+    </div>
+    <div class="loading-text">Calculating badge metrics...</div>
+  `;
+  header.appendChild(loadingBar);
+  const progressBar = loadingBar.querySelector(".progress-bar");
+
+  function processChunk() {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        const chunk = originalBadges.slice(processed, processed + CHUNK_SIZE);
+
+        chunk.forEach((badge) => {
+          badgeMetricsCache.set(badge.id, getBadgeMetrics(badge));
+          badgeRatingsCache.set(badge.id, getAverageRating(badge));
+        });
+
+        processed += chunk.length;
+        const progress = (processed / totalBadges) * 100;
+        progressBar.style.width = `${progress}%`;
+
+        resolve();
+      });
+    });
+  }
+
+  // Process chunks with delays to prevent freezing
+  while (processed < totalBadges) {
+    await processChunk();
+    // Small delay between chunks
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  console.timeEnd("precalculate");
+  loadingBar.remove();
+  isCalculating = false;
+
+  // Re-sort with current sorting method if not alphabetical
+  if (currentSort !== "alphabetical") {
+    sortBadges(currentSort);
+  }
+}
+
+// Add this function to calculate completion for all badges at once
+async function calculateCompletionMetrics() {
+  const loadingOverlay = showLoadingOverlay("Calculating completion metrics...");
+
+  try {
+    // Process in chunks to prevent UI freeze
+    const chunkSize = 50;
+    for (let i = 0; i < originalBadges.length; i += chunkSize) {
+      const chunk = originalBadges.slice(i, i + chunkSize);
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          chunk.forEach((badge) => {
+            if (!completionCache.has(badge.id)) {
+              completionCache.set(badge.id, getBadgeCompletion(badge));
+            }
+          });
+          resolve();
+        });
+      });
+    }
+  } finally {
+    loadingOverlay.remove();
+  }
+}
+
+// Add this function to index the clears data for faster lookups
+function indexClearsData() {
+  // Index by jumper
+  puzzleData.clears.forEach((clear) => {
+    if (!clearsByJumper.has(clear.jumper)) {
+      clearsByJumper.set(clear.jumper, new Set());
+    }
+    clearsByJumper.get(clear.jumper).add(clear.puzzleId);
+  });
+
+  // Index by puzzle
+  puzzleData.clears.forEach((clear) => {
+    if (!clearsByPuzzle.has(clear.puzzleId)) {
+      clearsByPuzzle.set(clear.puzzleId, new Set());
+    }
+    clearsByPuzzle.get(clear.puzzleId).add(clear.jumper);
+  });
+
+  // Cache puzzle requirements for each badge
+  originalBadges.forEach((badge) => {
+    const requirements = puzzleData.badgePuzzles
+      .filter((bp) => bp.badgeId === badge.id)
+      .map((bp) => ({
+        puzzleId: bp.puzzleId,
+        puzzle: puzzleData.puzzles.find((p) => p.ID === bp.puzzleId),
+      }))
+      .filter((req) => req.puzzle); // Filter out any missing puzzles
+
+    badgePuzzleRequirements.set(badge.id, requirements);
+  });
 }

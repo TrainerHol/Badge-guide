@@ -11,8 +11,20 @@
       <header>
         <h1>Badge Guide</h1>
         <div class="search-container">
+          <select id="sortSelect" class="sort-select">
+            <option value="id">Sort: ID</option>
+            <option value="alphabetical">Sort: A-Z</option>
+            <option value="rarity">Sort: Rarity</option>
+            <option value="completion">Sort: Completion</option>
+            <option value="difficulty">Sort: Difficulty</option>
+          </select>
           <input type="text" id="searchInput" placeholder="Search badges..." />
           <button id="setDiscordId" class="discord-button">Set Discord ID</button>
+          <button id="exportMode" class="discord-button" style="display: none">Export Mode</button>
+          <div id="exportControls" style="display: none">
+            <button id="confirmExport" class="discord-button">Confirm</button>
+            <button id="cancelExport" class="discord-button">Cancel</button>
+          </div>
         </div>
       </header>
 
@@ -46,6 +58,23 @@
         <div class="modal-buttons">
           <button id="saveDiscordId">Save</button>
           <button id="cancelDiscordId">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div id="exportModal" class="modal">
+      <div class="modal-content">
+        <h2>Badges copied to clipboard</h2>
+        <div class="code-block">
+          <code id="exportedBadges"></code>
+          <button id="copyBadges" class="copy-button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 4v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7.242a2 2 0 0 0-.602-1.43L16.083 2.57A2 2 0 0 0 14.685 2H10a2 2 0 0 0-2 2z" />
+              <path d="M16 18v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-buttons">
+          <button id="closeExport">Close</button>
         </div>
       </div>
     </div>
