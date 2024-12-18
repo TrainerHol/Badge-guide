@@ -3,12 +3,14 @@ let originalBadges = [];
 let badgePuzzles = [];
 let puzzles = [];
 let selectedBadge = null;
-
-const CDN_URL = "https://discord-cdn-proxy.strangehousing.workers.dev/?";
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
 
 function getImageUrl(url) {
   if (!url) return "placeholder.png";
-  return `${CDN_URL}${url}`;
+  // Get the extension from the original URL
+  const extension = url.split(".").pop();
+  // Use the badge ID from the current badge object
+  return `sh-dump/badges/${selectedBadge.id}.${extension}`;
 }
 
 async function loadData() {
@@ -29,15 +31,6 @@ async function loadData() {
     console.error("Error loading data:", error);
     document.body.innerHTML = '<div class="error">Error loading data. Please check if the JSON files are accessible.</div>';
   }
-}
-
-function preloadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
 }
 
 function calculateGridDimensions() {
@@ -63,30 +56,11 @@ async function renderBadgeGrid() {
   const badgeGrid = document.getElementById("badgeGrid");
   badgeGrid.innerHTML = "";
 
-  // Add loading indicator
-  const loadingIndicator = document.createElement("div");
-  loadingIndicator.className = "loading-indicator";
-  loadingIndicator.textContent = "Loading badges...";
-  badgeGrid.appendChild(loadingIndicator);
-
   // Calculate grid dimensions
   const { badgeSize, rows, columnsPerPage } = calculateGridDimensions();
 
   // Set grid template and badge sizes
   badgeGrid.style.gridTemplateRows = `repeat(${rows}, ${badgeSize}px)`;
-
-  // Preload all badge images
-  await Promise.all(
-    badges.map(async (badge) => {
-      if (badge.imageUrl) {
-        try {
-          await preloadImage(getImageUrl(badge.imageUrl));
-        } catch (error) {
-          console.error(`Failed to load image for badge: ${badge.name}`);
-        }
-      }
-    })
-  );
 
   // Create badge cards
   badges.forEach((badge) => {
@@ -97,14 +71,12 @@ async function renderBadgeGrid() {
       card.classList.add("selected");
     }
     card.innerHTML = `
-      <img src="${getImageUrl(badge.imageUrl)}" alt="${badge.name}">
+      <img src="sh-dump/badges/${badge.id}.${badge.imageUrl.split(".").pop()}" alt="${badge.name}">
       <h3>${badge.name}</h3>
     `;
     card.addEventListener("click", () => toggleBadge(badge));
     badgeGrid.appendChild(card);
   });
-
-  loadingIndicator.remove();
 
   // Add horizontal scroll behavior for mouse wheel
   badgeGrid.addEventListener(
