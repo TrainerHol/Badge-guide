@@ -569,7 +569,15 @@ function getAverageRating(badge) {
     .map((p) => parseFloat(p.Rating));
 
   if (ratings.length === 0) return 0;
-  return ratings.reduce((a, b) => a + b, 0) / ratings.length;
+
+  // Find highest difficulty
+  const highestRating = Math.max(...ratings);
+
+  // Calculate cumulative total
+  const cumulativeTotal = ratings.reduce((sum, rating) => sum + rating, 0);
+
+  // Return highest + (cumulative/1000)
+  return highestRating + cumulativeTotal / 1000;
 }
 
 // Add to setupSearch or create new setup function
