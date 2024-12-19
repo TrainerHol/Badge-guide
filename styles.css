@@ -695,3 +695,36 @@ main {
     transform: rotate(360deg);
   }
 }
+
+.puzzle-address {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  color: #ccc;
+}
+
+.copy-address {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #888;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.copy-address:hover {
+  opacity: 1;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.copy-address:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.copy-address svg {
+  display: block;
+}

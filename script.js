@@ -254,6 +254,15 @@ function selectBadge(badge) {
         </div>
         <div class="puzzle-details">
           by ${puzzle.Builder} ${getDifficultyString(puzzle)} ${getRatingString(puzzle)}
+          <div class="puzzle-address">
+            <span>${puzzle.World} ${puzzle.Address}</span>
+            <button class="copy-address" title="Copy teleport command" onclick="navigator.clipboard.writeText('${generateLifestreamCommand(puzzle.World, puzzle.Address)}')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
           ${puzzle.GoalsRules ? `<div class="puzzle-rules">${puzzle.GoalsRules}</div>` : ""}
         </div>
       `;
@@ -766,4 +775,38 @@ function getDifficultyString(puzzle) {
 
 function getRatingString(puzzle) {
   return puzzle.Rating !== "-" ? `Rating: ${puzzle.Rating}` : "";
+}
+
+// Add this utility function to generate the lifestream command
+function generateLifestreamCommand(world, address) {
+  // Initialize command parts
+  let command = `/li ${world}`;
+
+  // Extract location (Mist/Goblet/Lavender Beds)
+  const location = address.split("Ward")[0].trim();
+  command += ` ${location}`;
+
+  // Extract ward number
+  const wardMatch = address.match(/Ward (\d+)/);
+  if (wardMatch) {
+    command += ` w${wardMatch[1]}`;
+  }
+
+  // Check for Wing/Subdivision
+  const wingMatch = address.match(/Wing (\d+)/);
+  if (wingMatch) {
+    command += ` s`; // Add subdivision indicator for apartments
+  }
+
+  // Extract plot or apartment number
+  const plotMatch = address.match(/Plot (\d+)/);
+  const apartmentMatch = address.match(/Apartment (\d+)/);
+
+  if (plotMatch) {
+    command += ` p${plotMatch[1]}`;
+  } else if (apartmentMatch) {
+    command += ` a${apartmentMatch[1]}`;
+  }
+
+  return command;
 }
