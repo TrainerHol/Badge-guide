@@ -565,8 +565,12 @@ function getAverageRating(badge) {
 
   const ratings = puzzleIds
     .map((id) => puzzleData.puzzles.find((p) => p.ID === id))
-    .filter((p) => p && p.Rating !== "-")
-    .map((p) => parseFloat(p.Rating));
+    .map((p) => p?.Rating)
+    .map((rating) => {
+      const parsed = parseFloat(rating);
+      return isNaN(parsed) ? null : parsed;
+    })
+    .filter((rating) => rating !== null);
 
   if (ratings.length === 0) return 0;
 
