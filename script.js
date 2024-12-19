@@ -106,7 +106,7 @@ async function renderBadgeGrid() {
       card.classList.add("obtained");
     } else if (completion.percentage > 0) {
       card.classList.add("partial");
-      card.setAttribute("data-progress", `${completion.percentage}% complete`);
+      card.setAttribute("data-progress", `${completion.percentage}%`);
     }
 
     card.style.width = `${badgeSize}px`;
