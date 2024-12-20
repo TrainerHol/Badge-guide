@@ -18,6 +18,12 @@
             <option value="completion">Sort: Completion</option>
             <option value="difficulty">Sort: Difficulty</option>
           </select>
+          <button id="sortDirection" class="sort-direction" title="Toggle sort direction">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path class="arrow-up" d="M7 9l5-5 5 5" stroke-width="2"></path>
+              <path class="arrow-down" d="M7 15l5 5 5-5" stroke-width="2"></path>
+            </svg>
+          </button>
           <input type="text" id="searchInput" placeholder="Search badges..." />
           <button id="setDiscordId" class="discord-button">Set Discord ID</button>
           <button id="exportMode" class="discord-button" style="display: none">Export Mode</button>

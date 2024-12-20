@@ -728,3 +728,55 @@ main {
 .copy-address svg {
   display: block;
 }
+
+/* Sort Direction Button Styles */
+.sort-direction {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  padding: 0.6rem;
+  margin-left: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.sort-direction:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.sort-direction svg {
+  transition: all 0.2s ease;
+}
+
+/* Default state (ascending) */
+.sort-direction .arrow-up {
+  stroke: var(--accent-primary);
+  stroke-width: 2;
+  fill: var(--accent-primary);
+  transition: all 0.2s ease;
+}
+
+.sort-direction .arrow-down {
+  stroke: var(--text-secondary);
+  stroke-width: 2;
+  fill: none;
+  transition: all 0.2s ease;
+}
+
+/* Reversed state (descending) */
+.sort-direction.reversed .arrow-up {
+  stroke: var(--text-secondary);
+  stroke-width: 2;
+  fill: none;
+}
+
+.sort-direction.reversed .arrow-down {
+  stroke: var(--accent-primary);
+  stroke-width: 2;
+  fill: var(--accent-primary);
+}

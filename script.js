@@ -15,6 +15,7 @@ let badgeMetricsCache = new Map();
 let badgeRatingsCache = new Map();
 let currentSort = "id";
 let isCalculating = false;
+let sortDirection = 1; // 1 for ascending, -1 for descending
 const CHUNK_SIZE = 50; // Number of badges to process per chunk
 let dataLoaded = false;
 let metricsCalculated = {
@@ -460,11 +461,17 @@ async function sortBadges(sortType) {
   try {
     switch (sortType) {
       case "id":
-        badges.sort(sortById);
+        badges.sort((a, b) => {
+          const comparison = parseInt(a.id) - parseInt(b.id);
+          return sortDirection * comparison;
+        });
         break;
 
       case "alphabetical":
-        badges.sort((a, b) => a.name.localeCompare(b.name));
+        badges.sort((a, b) => {
+          const comparison = a.name.localeCompare(b.name);
+          return sortDirection * comparison;
+        });
         break;
 
       case "rarity":
@@ -475,7 +482,8 @@ async function sortBadges(sortType) {
         badges.sort((a, b) => {
           const aMetrics = badgeMetricsCache.get(a.id);
           const bMetrics = badgeMetricsCache.get(b.id);
-          return aMetrics.ownedBy - bMetrics.ownedBy;
+          const comparison = aMetrics.ownedBy - bMetrics.ownedBy;
+          return sortDirection * comparison;
         });
         break;
 
@@ -487,10 +495,12 @@ async function sortBadges(sortType) {
           badges.sort((a, b) => {
             const aCompletion = completionCache.get(a.id);
             const bCompletion = completionCache.get(b.id);
+            // If one is completed and the other isn't, completed should be first
             if (aCompletion.completed !== bCompletion.completed) {
-              return bCompletion.completed ? 1 : -1;
+              return sortDirection * (bCompletion.completed ? 1 : -1);
             }
-            return bCompletion.percentage - aCompletion.percentage;
+            // If neither is completed, sort by percentage (higher first)
+            return sortDirection * (bCompletion.percentage - aCompletion.percentage);
           });
         }
         break;
@@ -503,7 +513,8 @@ async function sortBadges(sortType) {
         badges.sort((a, b) => {
           const aRating = badgeRatingsCache.get(a.id);
           const bRating = badgeRatingsCache.get(b.id);
-          return bRating - aRating;
+          const comparison = aRating - bRating;
+          return sortDirection * comparison;
         });
         break;
     }
@@ -587,10 +598,54 @@ function getAverageRating(badge) {
 // Add to setupSearch or create new setup function
 function setupSorting() {
   const sortSelect = document.getElementById("sortSelect");
+  const sortDirectionBtn = document.getElementById("sortDirection");
+
+  // Set initial sort
   sortSelect.value = currentSort;
+
+  // Set initial direction (ascending)
+  sortDirection = 1;
+  updateSortDirectionButton(sortDirectionBtn);
+
   sortSelect.addEventListener("change", (e) => {
+    // Reset to ascending when changing sort type
+    sortDirection = 1;
+    updateSortDirectionButton(sortDirectionBtn);
     sortBadges(e.target.value);
   });
+
+  sortDirectionBtn.addEventListener("click", () => {
+    sortDirection *= -1;
+    updateSortDirectionButton(sortDirectionBtn);
+    sortBadges(currentSort);
+  });
+}
+
+// Add new function to update sort direction button state
+function updateSortDirectionButton(button) {
+  const isAscending = sortDirection === 1;
+  button.classList.toggle("reversed", !isAscending);
+
+  // Update title based on current sort type and direction
+  let directionText = "";
+  switch (currentSort) {
+    case "id":
+      directionText = isAscending ? "Low to High" : "High to Low";
+      break;
+    case "alphabetical":
+      directionText = isAscending ? "A to Z" : "Z to A";
+      break;
+    case "rarity":
+      directionText = isAscending ? "Least to Most Common" : "Most to Least Common";
+      break;
+    case "completion":
+      directionText = isAscending ? "Completed First" : "Incomplete First";
+      break;
+    case "difficulty":
+      directionText = isAscending ? "Easiest First" : "Hardest First";
+      break;
+  }
+  button.title = `Current: ${directionText}. Click to reverse.`;
 }
 
 // Initialize the application
