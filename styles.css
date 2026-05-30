@@ -1032,6 +1032,10 @@ main {
   background: transparent;
 }
 
+.card-embed-view[hidden] {
+  display: none !important;
+}
+
 body.embed-mode {
   height: auto;
   min-height: 100vh;
