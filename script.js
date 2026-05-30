@@ -17,6 +17,8 @@ let currentSort = "id";
 let isCalculating = false;
 let sortDirection = 1; // 1 for ascending, -1 for descending
 const CHUNK_SIZE = 50; // Number of badges to process per chunk
+let gridWheelHandlerAttached = false;
+let resizeHandlerAttached = false;
 let dataLoaded = false;
 let metricsCalculated = {
   rarity: false,
@@ -27,21 +29,39 @@ let clearsByJumper = new Map(); // Index clears by jumper
 let clearsByPuzzle = new Map(); // Index clears by puzzle
 let badgePuzzleRequirements = new Map(); // Cache puzzle requirements for badges
 
-function getImageUrl(url) {
-  if (!url) return "placeholder.png";
-  // Get the extension from the original URL
-  const extension = url.split(".").pop();
-  // Use the badge ID from the current badge object
-  return `sh-dump/badges/${selectedBadge.id}.${extension}`;
+function getBadgeImageUrl(badge) {
+  if (!badge || !badge.imageUrl) return "placeholder.png";
+  const extension = badge.imageUrl.split("?")[0].split(".").pop() || "png";
+  return `sh-dump/badges/${badge.id}.${extension}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function sortById(a, b) {
   return parseInt(a.id) - parseInt(b.id);
 }
 
+function syncBadgeEffects() {
+  const badgeGrid = document.getElementById("badgeGrid");
+  if (!badgeGrid) return;
+  window.BadgePixiEffects?.syncGrid({ badgeGrid, cards: document.querySelectorAll(".badge-card"), badges });
+}
+
 async function loadData() {
   try {
-    const [badgesResponse, badgePuzzlesResponse, puzzlesResponse, clearsResponse] = await Promise.all([fetch("sh-dump/badges.json"), fetch("sh-dump/badgePuzzles.json"), fetch("sh-dump/puzzles.json"), fetch("sh-dump/clears.json")]);
+    const [badgesResponse, badgePuzzlesResponse, puzzlesResponse, clearsResponse] = await Promise.all([
+      fetch("sh-dump/badges.json"),
+      fetch("sh-dump/badgePuzzles.json"),
+      fetch("sh-dump/puzzles.json"),
+      fetch("sh-dump/clears.json"),
+    ]);
 
     originalBadges = await badgesResponse.json();
     puzzleData.badgePuzzles = await badgePuzzlesResponse.json();
@@ -92,16 +112,23 @@ async function renderBadgeGrid() {
   badgeGrid.innerHTML = "";
 
   // Calculate grid dimensions
-  const { badgeSize, rows, columnsPerPage } = calculateGridDimensions();
+  const { badgeSize, rows } = calculateGridDimensions();
 
   // Set grid template and badge sizes
   badgeGrid.style.gridTemplateRows = `repeat(${rows}, ${badgeSize}px)`;
+  badgeGrid.style.gridAutoColumns = `${badgeSize}px`;
 
   // Create badge cards
   badges.forEach((badge) => {
     const card = document.createElement("div");
-    card.className = "badge-card";
+    card.className = "badge-card is-loading";
+    card.dataset.badgeId = String(badge.id);
+    card.dataset.imageUrl = getBadgeImageUrl(badge);
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `${badge.name} badge`);
     const completion = getBadgeCompletion(badge);
+    const progressLabel = completion.completed ? "100%" : completion.percentage > 0 ? `${completion.percentage}%` : "";
 
     if (completion.completed) {
       card.classList.add("obtained");
@@ -114,11 +141,16 @@ async function renderBadgeGrid() {
     if (selectedBadge && selectedBadge.id === badge.id) {
       card.classList.add("selected");
     }
+    if (selectedForExport.has(badge.id)) {
+      card.classList.add("export-selected");
+    }
     card.innerHTML = `
-      <img src="sh-dump/badges/${badge.id}.${badge.imageUrl.split(".").pop()}" alt="${badge.name}">
-      <h3>${badge.name}</h3>
+      ${progressLabel ? `<span class="badge-ribbon ${completion.completed ? "available" : ""}">${isExportMode && completion.completed ? "Export" : progressLabel}</span>` : '<span class="badge-ribbon empty" aria-hidden="true"></span>'}
+      <span class="badge-pixi-slot" aria-hidden="true"></span>
+      <h3>${escapeHtml(badge.name)}</h3>
+      ${!completion.completed && completion.percentage > 0 ? `<div class="card-progress" aria-hidden="true"><span style="width: ${completion.percentage}%"></span></div>` : '<span class="card-progress empty" aria-hidden="true"></span>'}
     `;
-    card.addEventListener("click", () => {
+    const activateCard = () => {
       if (!dataLoaded) return; // Prevent clicks until data is loaded
 
       if (isExportMode) {
@@ -130,40 +162,61 @@ async function renderBadgeGrid() {
             selectedForExport.add(badge.id);
             card.classList.add("export-selected");
           }
+          syncBadgeEffects();
           toggleBadge(badge);
         }
       } else {
         toggleBadge(badge);
       }
+    };
+    card.addEventListener("click", activateCard);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activateCard();
+      }
     });
+    card.addEventListener("pointermove", (event) => window.BadgePixiEffects?.updatePointer(card, event));
+    card.addEventListener("pointerleave", () => window.BadgePixiEffects?.leavePointer(card));
     badgeGrid.appendChild(card);
   });
 
   // Add horizontal scroll behavior for mouse wheel
-  badgeGrid.addEventListener(
-    "wheel",
-    (e) => {
-      if (e.deltaY !== 0 && e.target.closest(".badge-grid")) {
-        e.preventDefault();
-        const pageWidth = columnsPerPage * (badgeSize + 16); // Include gap
-        const direction = e.deltaY > 0 ? 1 : -1;
-        badgeGrid.scrollLeft += pageWidth * direction;
-      }
-    },
-    { passive: false }
-  );
+  if (!gridWheelHandlerAttached) {
+    badgeGrid.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.deltaY !== 0 && e.target.closest(".badge-grid")) {
+          e.preventDefault();
+          const { badgeSize: currentBadgeSize, columnsPerPage } = calculateGridDimensions();
+          const pageWidth = columnsPerPage * (currentBadgeSize + 16); // Include gap
+          const direction = e.deltaY > 0 ? 1 : -1;
+          badgeGrid.scrollLeft += pageWidth * direction;
+        }
+      },
+      { passive: false }
+    );
+    gridWheelHandlerAttached = true;
+  }
 
   // Handle window resize
-  window.addEventListener(
-    "resize",
-    debounce(() => {
-      const { badgeSize, rows } = calculateGridDimensions();
-      badgeGrid.style.gridTemplateRows = `repeat(${rows}, ${badgeSize}px)`;
-      document.querySelectorAll(".badge-card").forEach((card) => {
-        card.style.width = `${badgeSize}px`;
-      });
-    }, 250)
-  );
+  if (!resizeHandlerAttached) {
+    window.addEventListener(
+      "resize",
+      debounce(() => {
+        const { badgeSize, rows } = calculateGridDimensions();
+        badgeGrid.style.gridTemplateRows = `repeat(${rows}, ${badgeSize}px)`;
+        badgeGrid.style.gridAutoColumns = `${badgeSize}px`;
+        document.querySelectorAll(".badge-card").forEach((card) => {
+          card.style.width = `${badgeSize}px`;
+        });
+        window.BadgePixiEffects?.syncGrid({ badgeGrid, cards: document.querySelectorAll(".badge-card"), badges });
+      }, 250)
+    );
+    resizeHandlerAttached = true;
+  }
+
+  window.BadgePixiEffects?.syncGrid({ badgeGrid, cards: document.querySelectorAll(".badge-card"), badges });
 }
 
 // Utility function to debounce resize events
@@ -189,6 +242,7 @@ function toggleBadge(badge) {
         card.classList.remove("selected");
       }
     });
+    syncBadgeEffects();
   } else {
     // Always select and show details
     selectBadge(badge);
@@ -207,7 +261,8 @@ function selectBadge(badge) {
   // Update badge details
   document.getElementById("selectedBadgeName").textContent = badge.name;
   const badgeImage = document.getElementById("selectedBadgeImage");
-  badgeImage.style.backgroundImage = `url(${getImageUrl(badge.imageUrl)})`;
+  badgeImage.style.backgroundImage = "";
+  window.BadgePixiEffects?.renderDetail({ element: badgeImage, badge });
 
   // Clear existing metrics if any
   const existingMetrics = document.querySelector(".badge-metrics");
@@ -235,14 +290,9 @@ function selectBadge(badge) {
 
   if (requirements && requirements.length > 0) {
     const userClears = discordId ? clearsByJumper.get(discordId.padStart(20, "0")) || new Set() : new Set();
-    console.log("User clears:", Array.from(userClears));
-
     requirements.forEach(({ puzzleId, puzzle }) => {
       const puzzleElement = document.createElement("div");
       puzzleElement.className = "puzzle-item";
-
-      console.log("Checking puzzle:", puzzleId, "Type:", typeof puzzleId);
-      console.log("Has clear:", userClears.has(puzzleId));
 
       if (discordId && userClears.has(puzzleId)) {
         puzzleElement.classList.add("cleared");
@@ -286,6 +336,7 @@ function selectBadge(badge) {
       card.classList.add("selected");
     }
   });
+  syncBadgeEffects();
 
   // Add metrics before puzzles section
   const metrics = getBadgeMetrics(badge);
