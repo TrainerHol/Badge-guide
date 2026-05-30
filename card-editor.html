@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Card Editor | Badge Guide</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="card-editor-page">
+    <div class="app-container">
+      <header class="app-header">
+        <div class="brand-lockup">
+          <h1>Card Editor</h1>
+        </div>
+        <div class="search-container" role="toolbar" aria-label="Card editor controls">
+          <a class="discord-button" href="index.html">Badge Guide</a>
+          <label class="inline-control">
+            <span>Template</span>
+            <select id="templateSelect" class="sort-select">
+              <option value="puzzlebot">PuzzleBot Card</option>
+            </select>
+          </label>
+          <label class="inline-control discord-id-control">
+            <span>Discord ID</span>
+            <input type="text" id="editorDiscordId" inputmode="numeric" placeholder="Set Discord ID" />
+          </label>
+          <button id="saveEditorDiscordId" class="discord-button" type="button">Set Discord ID</button>
+        </div>
+      </header>
+
+      <main class="card-editor-main">
+        <section class="card-editor-content framed-panel" aria-labelledby="cardEditorTitle">
+          <div class="card-editor-head">
+            <div>
+              <span class="modal-kicker">Static Embed Template</span>
+              <h2 id="cardEditorTitle">PuzzleBot Card</h2>
+            </div>
+            <div id="ownedBadgeCount" class="status-pill">No Discord ID</div>
+          </div>
+          <div class="card-editor-layout">
+            <form class="card-editor-controls" id="cardEditorForm">
+              <label>
+                Character Name
+                <input type="text" id="cardCharacterName" maxlength="42" />
+              </label>
+              <label>
+                Avatar URL
+                <input type="url" id="cardAvatarUrl" inputmode="url" placeholder="https://i.imgur.com/image.png" />
+              </label>
+              <label class="toggle-row">
+                <span>Auto Shine</span>
+                <input type="checkbox" id="cardAutoShine" checked />
+                <span class="toggle-track" aria-hidden="true"></span>
+              </label>
+              <label>
+                Favorite Badge
+                <select id="cardFavoriteBadge"></select>
+              </label>
+              <div class="slot-editor" id="cardSlotControls" aria-label="Display badge slots"></div>
+            </form>
+            <section class="card-preview-panel" aria-label="Card preview">
+              <div class="card-preview-frame">
+                <div id="cardPreviewStage" class="card-canvas-stage">
+                  <canvas id="cardPreviewCanvas" width="953" height="624"></canvas>
+                </div>
+              </div>
+              <div class="card-editor-actions">
+                <button id="downloadCard" class="discord-button" type="button">Download PNG</button>
+                <button id="copyCardEmbed" class="discord-button" type="button">Copy Embed</button>
+                <button id="openCardEmbed" class="discord-button" type="button">Open Embed</button>
+              </div>
+              <div class="embed-code-row">
+                <textarea id="cardEmbedCode" rows="3" readonly></textarea>
+              </div>
+              <div id="cardEditorStatus" class="editor-status" role="status" aria-live="polite"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div id="cardEmbedView" class="card-embed-view" hidden>
+      <div id="embedCardStage" class="card-canvas-stage">
+        <canvas id="embedCardCanvas" width="953" height="624"></canvas>
+      </div>
+    </div>
+    <script src="badge-effects.js"></script>
+    <script src="card-editor.js"></script>
+  </body>
+</html>
