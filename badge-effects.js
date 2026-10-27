@@ -153,6 +153,166 @@ void main(void) {
     return `#${toHexColor(color).toString(16).padStart(6, "0")}`;
   }
 
+  // Badge images come from raw.githubusercontent.com, which rate-limits
+  // unauthenticated traffic. Every badge image request goes through this queue:
+  // it caps concurrent and per-second requests, backs off and retries on 429/5xx
+  // or network errors, and keeps images in Cache Storage so repeat visits don't
+  // download them again. The glow sampler and the PIXI texture share one download.
+  const BADGE_IMAGE_BASE = "https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badges/";
+  const BADGE_IMAGE_CACHE_NAME = "badge-images-v1";
+  const BADGE_IMAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  const BADGE_IMAGE_MAX_CONCURRENT = 12;
+  const BADGE_IMAGE_REQUESTS_PER_SECOND = 12;
+  const BADGE_IMAGE_BURST = 24;
+  const BADGE_IMAGE_MAX_RETRIES = 3;
+  const badgeImageQueue = [];
+  const badgeImageObjectUrls = new Map();
+  let badgeImageActive = 0;
+  let badgeImageTokens = BADGE_IMAGE_BURST;
+  let badgeImageTokensAt = Date.now();
+  let badgeImagePausedUntil = 0;
+  let badgeImageTimer = null;
+
+  function refillBadgeImageTokens(now) {
+    const elapsed = (now - badgeImageTokensAt) / 1000;
+    badgeImageTokens = Math.min(BADGE_IMAGE_BURST, badgeImageTokens + elapsed * BADGE_IMAGE_REQUESTS_PER_SECOND);
+    badgeImageTokensAt = now;
+  }
+
+  function pumpBadgeImageQueue() {
+    if (badgeImageTimer) return;
+    while (badgeImageQueue.length && badgeImageActive < BADGE_IMAGE_MAX_CONCURRENT) {
+      const now = Date.now();
+      refillBadgeImageTokens(now);
+      const wait = Math.max(
+        badgeImageTokens >= 1 ? 0 : ((1 - badgeImageTokens) / BADGE_IMAGE_REQUESTS_PER_SECOND) * 1000,
+        badgeImagePausedUntil - now
+      );
+      if (wait > 0) {
+        badgeImageTimer = setTimeout(() => {
+          badgeImageTimer = null;
+          pumpBadgeImageQueue();
+        }, Math.ceil(wait));
+        return;
+      }
+      badgeImageTokens -= 1;
+      badgeImageActive += 1;
+      const job = badgeImageQueue.shift();
+      job().finally(() => {
+        badgeImageActive -= 1;
+        pumpBadgeImageQueue();
+      });
+    }
+  }
+
+  function scheduleBadgeImageRequest(task) {
+    return new Promise((resolve, reject) => {
+      badgeImageQueue.push(() => task().then(resolve, reject));
+      pumpBadgeImageQueue();
+    });
+  }
+
+  let badgeImageCachePromise = null;
+
+  function openBadgeImageCache() {
+    if (!("caches" in window)) return Promise.resolve(null);
+    if (!badgeImageCachePromise) {
+      badgeImageCachePromise = caches.open(BADGE_IMAGE_CACHE_NAME).catch(() => null);
+    }
+    return badgeImageCachePromise;
+  }
+
+  async function readCachedBadgeImage(url) {
+    try {
+      const cache = await openBadgeImageCache();
+      if (!cache) return null;
+      const response = await cache.match(url);
+      if (!response) return null;
+      const cachedAt = Number(response.headers.get("x-badge-cached-at") || 0);
+      return { blob: await response.blob(), fresh: Date.now() - cachedAt < BADGE_IMAGE_CACHE_TTL_MS };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function writeCachedBadgeImage(url, blob) {
+    try {
+      const cache = await openBadgeImageCache();
+      if (!cache) return;
+      await cache.put(
+        url,
+        new Response(blob, {
+          headers: {
+            "content-type": blob.type || "image/png",
+            "x-badge-cached-at": String(Date.now()),
+          },
+        })
+      );
+    } catch (error) {
+      // Storage can be full or unavailable (private browsing); the image still loads.
+    }
+  }
+
+  async function downloadBadgeImage(url) {
+    for (let attempt = 0; ; attempt += 1) {
+      const result = await scheduleBadgeImageRequest(async () => {
+        try {
+          const response = await fetch(url, { mode: "cors" });
+          if (response.ok) return { blob: await response.blob() };
+          return { status: response.status, retryAfter: Number(response.headers.get("retry-after")) };
+        } catch (error) {
+          // A 429 without CORS headers surfaces as a network error.
+          return { status: 0 };
+        }
+      });
+      if (result.blob) return result.blob;
+
+      const retryable = result.status === 0 || result.status === 429 || result.status >= 500;
+      if (!retryable || attempt >= BADGE_IMAGE_MAX_RETRIES) {
+        throw new Error(`Badge image request failed (${result.status || "network error"})`);
+      }
+      const delay = result.retryAfter > 0 ? result.retryAfter * 1000 : 1000 * 2 ** attempt;
+      badgeImagePausedUntil = Math.max(badgeImagePausedUntil, Date.now() + delay);
+    }
+  }
+
+  // Resolves to a URL that can be used as an image source: a blob: URL for
+  // sh-dump badge images, the original URL for anything else, or "" on failure.
+  function loadBadgeImage(url) {
+    if (!url) return Promise.resolve("");
+    if (!url.startsWith(BADGE_IMAGE_BASE)) return Promise.resolve(url);
+    if (!badgeImageObjectUrls.has(url)) {
+      const promise = (async () => {
+        const cached = await readCachedBadgeImage(url);
+        if (cached && cached.fresh) return URL.createObjectURL(cached.blob);
+        try {
+          const blob = await downloadBadgeImage(url);
+          writeCachedBadgeImage(url, blob);
+          return URL.createObjectURL(blob);
+        } catch (error) {
+          if (cached) return URL.createObjectURL(cached.blob);
+          throw error;
+        }
+      })().catch((error) => {
+        console.warn("Badge image failed to load", url, error);
+        badgeImageObjectUrls.delete(url);
+        return "";
+      });
+      badgeImageObjectUrls.set(url, promise);
+    }
+    return badgeImageObjectUrls.get(url);
+  }
+
+  function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error(`Image failed to decode: ${src}`));
+      image.src = src;
+    });
+  }
+
   function getLocalBadgeImageUrl(badge) {
     if (!badge) return "";
     if (imageUrlCache.has(badge.id)) return imageUrlCache.get(badge.id);
@@ -168,7 +328,12 @@ void main(void) {
       texturePromises.set(
         url,
         loadPixi()
-          .then(() => PIXI.Assets.load(url))
+          .then(() => loadBadgeImage(url))
+          .then((src) => {
+            if (!src) return null;
+            if (src === url) return PIXI.Assets.load(url);
+            return loadImageElement(src).then((image) => PIXI.Texture.from(image));
+          })
           .catch((error) => {
             console.warn("Badge texture failed to load", url, error);
             return null;
@@ -235,7 +400,13 @@ void main(void) {
         colorCache.set(badge.id, DEFAULT_GLOW);
         resolve(DEFAULT_GLOW);
       };
-      image.src = url;
+      loadBadgeImage(url).then((src) => {
+        if (src) {
+          image.src = src;
+        } else {
+          image.onerror();
+        }
+      });
     });
   }
 
@@ -1096,6 +1267,7 @@ void main(void) {
     syncCard,
     sampleBadgeGlow,
     getLocalBadgeImageUrl,
+    loadBadgeImage,
     destroyGrid,
     destroyCardRenderer,
   };
