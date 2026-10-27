@@ -74,7 +74,7 @@ function debounce(func, wait) {
 function getBadgeImageUrl(badge) {
   if (!badge || !badge.imageUrl) return "placeholder.png";
   const extension = badge.imageUrl.split("?")[0].split(".").pop() || "png";
-  return `sh-dump/badges/${badge.id}.${extension}`;
+  return `https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badges/${badge.id}.${extension}`;
 }
 
 function cleanImageUrl(value) {
@@ -751,11 +751,11 @@ function setupEditorEvents() {
 
 async function loadData() {
   const [badgesResponse, badgePuzzlesResponse, puzzlesResponse, clearsResponse, cardSettingsResponse] = await Promise.all([
-    fetch("sh-dump/badges.json"),
-    fetch("sh-dump/badgePuzzles.json"),
-    fetch("sh-dump/puzzles.json"),
-    fetch("sh-dump/clears.json"),
-    fetch("sh-dump/cardSettings.json"),
+    fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badges.json"),
+    fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badgePuzzles.json"),
+    fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/puzzles.json"),
+    fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/clears.json"),
+    fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/cardSettings.json"),
   ]);
 
   originalBadges = await badgesResponse.json();
