@@ -421,7 +421,19 @@ function loadCanvasImage(src) {
       image.crossOrigin = "anonymous";
       image.onload = () => resolve(image);
       image.onerror = () => tryCandidate(index + 1);
-      image.src = candidates[index];
+      // Badge images go through the shared rate-limited, cached loader.
+      const loadBadgeImage = window.BadgePixiEffects?.loadBadgeImage;
+      if (!loadBadgeImage) {
+        image.src = candidates[index];
+        return;
+      }
+      loadBadgeImage(candidates[index]).then((resolved) => {
+        if (resolved) {
+          image.src = resolved;
+        } else {
+          tryCandidate(index + 1);
+        }
+      });
     };
 
     tryCandidate(0);
