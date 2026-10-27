@@ -32,7 +32,7 @@ let badgePuzzleRequirements = new Map(); // Cache puzzle requirements for badges
 function getBadgeImageUrl(badge) {
   if (!badge || !badge.imageUrl) return "placeholder.png";
   const extension = badge.imageUrl.split("?")[0].split(".").pop() || "png";
-  return `sh-dump/badges/${badge.id}.${extension}`;
+  return `https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badges/${badge.id}.${extension}`;
 }
 
 function escapeHtml(value) {
@@ -57,10 +57,10 @@ function syncBadgeEffects() {
 async function loadData() {
   try {
     const [badgesResponse, badgePuzzlesResponse, puzzlesResponse, clearsResponse] = await Promise.all([
-      fetch("sh-dump/badges.json"),
-      fetch("sh-dump/badgePuzzles.json"),
-      fetch("sh-dump/puzzles.json"),
-      fetch("sh-dump/clears.json"),
+      fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badges.json"),
+      fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badgePuzzles.json"),
+      fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/puzzles.json"),
+      fetch("https://raw.githubusercontent.com/TrainerHol/sh-dump/master/clears.json"),
     ]);
 
     originalBadges = await badgesResponse.json();
