@@ -157,7 +157,7 @@ void main(void) {
     if (!badge) return "";
     if (imageUrlCache.has(badge.id)) return imageUrlCache.get(badge.id);
     const extension = (badge.imageUrl || "").split("?")[0].split(".").pop() || "png";
-    const url = `sh-dump/badges/${badge.id}.${extension}`;
+    const url = `https://raw.githubusercontent.com/TrainerHol/sh-dump/master/badges/${badge.id}.${extension}`;
     imageUrlCache.set(badge.id, url);
     return url;
   }
@@ -186,6 +186,7 @@ void main(void) {
     return new Promise((resolve) => {
       const image = new Image();
       image.decoding = "async";
+      image.crossOrigin = "anonymous";
       image.onload = () => {
         try {
           const canvas = document.createElement("canvas");
